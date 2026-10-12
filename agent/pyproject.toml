@@ -1,0 +1,13 @@
+[project]
+name = "hireme-agent"
+version = "0.1.0"
+description = "Delivery-independent conversational agent that represents one owner"
+requires-python = ">=3.11"
+dependencies = ["pydantic-ai-slim[groq]>=1.0,<2", "posthog>=7.0", "anyio>=4", "httpx>=0.27"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hireme_agent"]

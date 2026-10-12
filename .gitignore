@@ -1,0 +1,37 @@
+.claude/settings.local.json
+CLAUDE.local.md
+skills-lock.json
+
+# Secrets
+.env
+.env.local
+*.local
+
+# Local terms scripts/check_privacy.py must never find in tracked files.
+.privacy-denylist
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+dist/
+
+# Node / Next.js
+node_modules/
+web/.next/
+web/out/
+web/next-env.d.ts
+web/*.tsbuildinfo
+.turbo/
+
+# Local agent/skill tooling (not part of this project)
+.agents/
+.claude/skills/
+.claude/worktrees/
+
+# Misc
+.DS_Store

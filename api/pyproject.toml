@@ -1,0 +1,46 @@
+[project]
+name = "hireme-api"
+version = "0.1.0"
+description = "FastAPI service that runs an owner's screening Rep on Groq and serves the chat + voice API."
+requires-python = ">=3.11"
+dependencies = [
+    "hireme-agent",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "httpx>=0.27",
+    "python-multipart>=0.0.9",
+    "python-dotenv>=1.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "respx>=0.21",
+    "ruff>=0.8",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# pycodestyle (E/W), pyflakes (F), isort (I), pyupgrade (UP), bugbear (B), comprehensions (C4).
+select = ["E", "W", "F", "I", "UP", "B", "C4"]
+
+[tool.hatch.build.targets.wheel]
+include = ["app.py", "conversation_turn.py", "_bootstrap.py"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "integration: hits real LLM/ElevenLabs APIs; needs RUN_INTEGRATION=1",
+]
+
+[tool.uv.sources]
+hireme-agent = { workspace = true }

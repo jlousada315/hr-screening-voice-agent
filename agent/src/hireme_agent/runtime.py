@@ -11,6 +11,7 @@ from collections.abc import AsyncIterator
 from contextlib import aclosing
 from importlib.resources import files
 from pathlib import Path
+from time import perf_counter
 
 import anyio
 from groq import AsyncGroq
@@ -319,7 +320,9 @@ async def _run_tokens(
                         # The request exactly as sent: history, the new message and, on
                         # the second request of a tool turn, the tool call and its result.
                         "$ai_input": _wire_messages([*run.ctx.state.message_history, node.request]),
+                        "$ai_stream": True,
                     }
+                    requested = perf_counter()
                     with observation.generation(properties):
                         async with node.stream(run.ctx) as stream:
                             try:
@@ -327,13 +330,18 @@ async def _run_tokens(
                                     if isinstance(event, PartStartEvent) and isinstance(
                                         event.part, TextPart
                                     ):
-                                        if event.part.content:
-                                            await deliver_text(event.part.content)
+                                        text_delta = event.part.content
                                     elif isinstance(event, PartDeltaEvent) and isinstance(
                                         event.delta, TextPartDelta
                                     ):
-                                        if event.delta.content_delta:
-                                            await deliver_text(event.delta.content_delta)
+                                        text_delta = event.delta.content_delta
+                                    else:
+                                        continue
+                                    if text_delta:
+                                        properties.setdefault(
+                                            "$ai_time_to_first_token", perf_counter() - requested
+                                        )
+                                        await deliver_text(text_delta)
                             except Exception as exc:
                                 if observation.error is None:
                                     observation.error = exc

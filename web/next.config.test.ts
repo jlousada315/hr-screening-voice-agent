@@ -26,7 +26,7 @@ function withRepo(run: (root: string) => void) {
 function loadConfigEnv(root: string, overrides: Record<string, string>) {
   const env = { ...process.env };
   for (const name of Object.keys(env)) {
-    if (name === "POSTHOG_API_KEY" || name === "POSTHOG_API_URL" ||
+    if (name === "POSTHOG_API_KEY" || name === "POSTHOG_API_URL" || name === "DEPLOYMENT_ENVIRONMENT" ||
       name === "OWNER_FILE" || name === "__NEXT_PROCESSED_ENV") delete env[name];
   }
   const result = spawnSync(process.execPath, ["--input-type=module", "-e", `
@@ -50,7 +50,10 @@ it.each([
   withRepo((root) => {
     writeFileSync(join(root, ".env"), contents + "\nGROQ_API_KEY=server-only\n");
     expect(loadConfigEnv(root, overrides))
-      .toEqual({ POSTHOG_API_KEY: key, POSTHOG_API_URL: host, ...EXAMPLE_OWNER });
+      .toEqual({
+        POSTHOG_API_KEY: key, POSTHOG_API_URL: host, DEPLOYMENT_ENVIRONMENT: "development",
+        ...EXAMPLE_OWNER,
+      });
   });
 });
 

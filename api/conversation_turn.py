@@ -8,7 +8,7 @@ import re
 from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import aclosing
 from dataclasses import dataclass
-from typing import Literal, TypedDict
+from typing import Literal, NotRequired, TypedDict
 from weakref import WeakKeyDictionary
 
 import anyio
@@ -145,6 +145,8 @@ class TextTurn:
     conversation_id: str | None = None
     distinct_id: str | None = None
     session_id: str | None = None
+    call_id: str | None = None
+    turn_index: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,6 +156,8 @@ class VoiceTurn:
     conversation_id: str | None = None
     distinct_id: str | None = None
     session_id: str | None = None
+    call_id: str | None = None
+    turn_index: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,6 +166,7 @@ class GreetingTurn:
 
     distinct_id: str | None = None
     session_id: str | None = None
+    call_id: str | None = None
 
 
 class TokenEvent(TypedDict):
@@ -184,6 +189,7 @@ class DoneEvent(TypedDict):
     type: Literal["done"]
     conversation_id: str
     trace_id: str
+    fallback: NotRequired[bool]  # the busy reply stood in for a failed answer
 
 
 class ErrorEvent(TypedDict):
@@ -237,6 +243,8 @@ async def start(turn: TextTurn | VoiceTurn) -> TurnStream:
         hireme_agent.PROMPT_VERSION,
         # One trace per call: every turn of a conversation is a span under the same trace.
         trace_id=conversation_id,
+        call_id=turn.call_id,
+        turn_index=turn.turn_index,
     )
     try:
         if isinstance(turn, VoiceTurn):
@@ -287,6 +295,8 @@ async def start_greeting(turn: GreetingTurn) -> TurnStream:
         "voice",
         hireme_agent.PROMPT_VERSION,
         trace_id=conversation_id,
+        call_id=turn.call_id,
+        turn_index=0,
     )
     observation.input_state = "(call started)"
     stream = TurnStream(observation)
@@ -324,6 +334,8 @@ async def _greeting_events(
         logger.warning("greeting speech failed", exc_info=True)
         observation.error = exc
         audio = b""
+    if audio:
+        observation.mark_first_audio()
     yield {"type": "sentence", "text": text, "audio": base64.b64encode(audio).decode("ascii")}
     yield {"type": "done", "conversation_id": conversation_id, "trace_id": observation.trace_id}
 
@@ -333,6 +345,7 @@ async def _sentence(text: str, observation: TurnObservation) -> SentenceEvent:
         "speech synthesis", **{"$ai_provider": "elevenlabs", "$ai_model": _TTS_MODEL}
     ):
         audio = await _synthesize(_spoken_text(text))
+    observation.mark_first_audio()
     return {"type": "sentence", "text": text, "audio": base64.b64encode(audio).decode("ascii")}
 
 
@@ -372,6 +385,7 @@ async def _events(
                     "type": "done",
                     "conversation_id": conversation_id,
                     "trace_id": observation.trace_id,
+                    "fallback": True,
                 }
                 return
             except Exception:

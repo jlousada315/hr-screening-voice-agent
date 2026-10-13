@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { Rating } from "./feedback";
 
+const RATINGS: readonly Rating[] = [1, 2, 3, 4, 5];
+
 export function CallFeedbackForm({ status, submit, skip, restart }: {
   status: "ready" | "submitted" | "error";
   submit: (rating: Rating, comment: string) => void;
@@ -19,7 +21,7 @@ export function CallFeedbackForm({ status, submit, skip, restart }: {
     <main className="precall-shell">
       <section className="feedback-card" aria-labelledby="feedback-title">
         <h1 id="feedback-title" tabIndex={-1} ref={heading}>
-          {status === "submitted" ? "Thank you for your feedback" : "Was this call helpful?"}
+          {status === "submitted" ? "Thank you for your feedback" : "How was your call?"}
         </h1>
         {status === "submitted" ? (
           <>
@@ -32,17 +34,17 @@ export function CallFeedbackForm({ status, submit, skip, restart }: {
             if (rating) { setAttempted(true); submit(rating, comment); }
           }}>
             <fieldset disabled={attempted}>
-              <legend>Choose a rating (required)</legend>
+              <legend>Rate the call from 1 to 5 stars (required)</legend>
               <div className="feedback-ratings">
-                {(["Yes, helpful", "No, not helpful"] as const).map((choice, index) => (
-                  <label key={choice}>
-                    <input type="radio" name="helpful" value={choice} required
-                      checked={rating === choice} onChange={() => setRating(choice)} />
-                    <span aria-hidden="true">{index === 0 ? "👍" : "👎"}</span> {choice}
+                {RATINGS.map((stars) => (
+                  <label key={stars} aria-label={`${stars} star${stars === 1 ? "" : "s"}`}>
+                    <input type="radio" name="rating" value={stars} required
+                      checked={rating === stars} onChange={() => setRating(stars)} />
+                    <span aria-hidden="true">{rating !== null && stars <= rating ? "★" : "☆"}</span>
                   </label>
                 ))}
               </div>
-              <label htmlFor="feedback-comment">What could we improve? (optional)</label>
+              <label htmlFor="feedback-comment">Tell us more (optional)</label>
               <textarea id="feedback-comment" maxLength={2000} value={comment}
                 onChange={(event) => setComment(event.target.value)} aria-describedby="comment-limit" />
               <p id="comment-limit">{comment.length}/2,000 characters</p>

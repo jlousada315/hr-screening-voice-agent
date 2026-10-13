@@ -18,10 +18,13 @@ const REARM_AFTER_DELIVERY_MS = 1_000;
 // Three silent rotations (~15s) without any speech while "listening" is worth reporting.
 const IDLE_REPORT_ROTATIONS = 3;
 
+/** When the caller stopped speaking (epoch ms) and how long they spoke, for turn timing. */
+export type UtteranceTiming = { speechMs: number; speechEndedAt: number };
+
 type Options = {
   enabled: boolean;
   muted: boolean;
-  onUtterance: (audio: Blob) => void;
+  onUtterance: (audio: Blob, timing: UtteranceTiming) => void;
   onError: (message: string) => void;
   /** Detector diagnostics (why an utterance was dropped, how long we heard nothing). */
   onEvent?: (name: string, props: Record<string, unknown>) => void;
@@ -109,6 +112,7 @@ export function useVoiceActivity({ enabled, muted, onUtterance, onError, onEvent
     let speechStartedAt: number | null = null;
     let lastSpeechAt: number | null = null;
     let peakRms = 0;
+    let timing: UtteranceTiming = { speechMs: 0, speechEndedAt: Date.now() };
 
     recorder.ondataavailable = (event) => {
       if (event.data.size > 0) chunks.push(event.data);
@@ -124,7 +128,7 @@ export function useVoiceActivity({ enabled, muted, onUtterance, onError, onEvent
         const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
         if (blob.size > 0) {
           delivered = true;
-          callbacks.current.onUtterance(blob);
+          callbacks.current.onUtterance(blob, timing);
         }
       }
       if (!delivered) {
@@ -181,6 +185,7 @@ export function useVoiceActivity({ enabled, muted, onUtterance, onError, onEvent
         silenceMs >= VOICE_TIMING.silenceCompletionMs
       ) {
         resetIdle();
+        timing = { speechMs: Math.round(speechMs), speechEndedAt: Date.now() - silenceMs };
         report("voice_utterance_captured", {
           reason: "silence", speech_ms: Math.round(speechMs), peak_rms: round(peakRms),
         });
@@ -192,6 +197,7 @@ export function useVoiceActivity({ enabled, muted, onUtterance, onError, onEvent
         now - speechStartedAt >= VOICE_TIMING.maximumUtteranceMs
       ) {
         resetIdle();
+        timing = { speechMs: Math.round(now - speechStartedAt), speechEndedAt: Date.now() };
         report("voice_utterance_captured", {
           reason: "max_length", speech_ms: Math.round(now - speechStartedAt),
           peak_rms: round(peakRms),
@@ -205,6 +211,7 @@ export function useVoiceActivity({ enabled, muted, onUtterance, onError, onEvent
         silenceMs >= VOICE_TIMING.silenceCompletionMs
       ) {
         resetIdle();
+        timing = { speechMs: Math.round(speechMs), speechEndedAt: Date.now() - silenceMs };
         const word = peakRms >= SHORT_WORD_RMS;
         report(word ? "voice_utterance_captured" : "voice_utterance_discarded", {
           reason: word ? "short_word" : "too_short",

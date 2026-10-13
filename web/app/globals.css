@@ -897,6 +897,7 @@ button:focus-visible {
 .feedback-ratings { display: flex; flex-wrap: wrap; gap: 1rem; margin: 1rem 0 1.5rem; }
 .feedback-ratings label { padding: .75rem; border: 1px solid #888; border-radius: 12px; cursor: pointer; }
 .feedback-ratings label:has(input:checked) { outline: 2px solid currentColor; }
+.feedback-ratings span { font-size: 1.5rem; line-height: 1; }
 .feedback-card textarea { display: block; width: 100%; min-height: 110px; margin-top: .5rem; padding: .75rem; border: 1px solid #888; border-radius: 8px; color: inherit; background: transparent; }
 .feedback-card p { margin: .75rem 0; }
 .feedback-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; }

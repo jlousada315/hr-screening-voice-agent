@@ -1,5 +1,5 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
 import { useVoiceCall } from "./useVoiceCall";
 
@@ -33,8 +33,8 @@ type FakeAudio = {
   play: ReturnType<typeof vi.fn>; pause: ReturnType<typeof vi.fn>;
 };
 let audios: FakeAudio[];
-let fetchMock: ReturnType<typeof vi.fn>;
-let greetingMock: ReturnType<typeof vi.fn>;
+let fetchMock: Mock<(...args: any[]) => any>;
+let greetingMock: Mock<(...args: any[]) => any>;
 let playResult: Promise<void> | undefined;
 
 function deferred<T>() {

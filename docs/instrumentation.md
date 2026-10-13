@@ -171,6 +171,8 @@ Every `$ai_*` event carries:
 - `deployment_environment`, `app_name: "hireme-agent"`
 - `$ai_latency`, `$ai_is_error`
 
+`$ai_time_to_first_token` is set at the model's first output part, whether that is text or a tool call, so turns that end in a tool or an output function (online presence, booking link) have it too.
+
 Errors record the exception class, plus `$ai_http_status` and `$ai_retry_after_seconds` when available. They never record provider error bodies, which can contain secrets. A caller cancelling a turn records `$ai_cancelled` and is not counted as an error. Geo-IP lookup is disabled.
 
 ## A turn, end to end

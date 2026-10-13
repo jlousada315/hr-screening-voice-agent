@@ -328,7 +328,8 @@ describe("useVoiceActivity recovery", () => {
     await act(() => result.current.start());
     expect(recorders).toHaveLength(1);
 
-    vi.useFakeTimers();
+    // Leave requestAnimationFrame to the stub above; frames are driven by runFrame.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     try {
       level = "speech";
       runFrame(0);

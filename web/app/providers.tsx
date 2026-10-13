@@ -20,6 +20,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
         api_host: POSTHOG_HOST,
         capture_pageview: true,
         capture_pageleave: true,
+        capture_performance: { web_vitals: true },
       });
       setReady(true);
     } catch { /* The call remains usable when analytics initialization fails. */ }

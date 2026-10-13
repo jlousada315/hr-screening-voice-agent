@@ -31,7 +31,10 @@ export function CallFeedbackForm({ status, submit, skip, restart }: {
         {status === "submitted" ? (
           <>
             <p role="status" className="feedback-subtitle">Thanks for helping improve the AI Rep.</p>
-            <button className="start-call" onClick={restart}>Start another call</button>
+            <div className="feedback-actions">
+              <button className="start-call" type="button" onClick={restart}>Start another call</button>
+              <button type="button" className="ghost-button" onClick={skip}>Back to home</button>
+            </div>
           </>
         ) : (
           <form onSubmit={(event) => {

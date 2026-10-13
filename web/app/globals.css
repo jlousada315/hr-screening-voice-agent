@@ -980,7 +980,6 @@ button:focus-visible {
 
 .feedback-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .feedback-actions .start-call { min-width: 160px; min-height: 52px; margin-right: 8px; }
-.feedback-card > .start-call { min-width: 200px; min-height: 52px; }
 .feedback-actions .start-call:disabled { opacity: 0.4; cursor: default; transform: none; box-shadow: none; }
 
 .ghost-button {

@@ -40,12 +40,14 @@ it("allows an empty comment, announces failures and keeps skip and restart avail
 
 it("focuses the thank-you heading and provides restart after submission", async () => {
   const user = userEvent.setup();
-  const restart = vi.fn();
-  render(<CallFeedbackForm status="submitted" submit={vi.fn()} skip={vi.fn()} restart={restart} />);
+  const restart = vi.fn(), skip = vi.fn();
+  render(<CallFeedbackForm status="submitted" submit={vi.fn()} skip={skip} restart={restart} />);
   expect(screen.getByRole("heading", { name: "Thank you for your feedback" })).toHaveFocus();
   expect(screen.queryByRole("button", { name: "Submit" })).toBeNull();
   await user.click(screen.getByRole("button", { name: "Start another call" }));
   expect(restart).toHaveBeenCalledOnce();
+  await user.click(screen.getByRole("button", { name: "Back to home" }));
+  expect(skip).toHaveBeenCalledOnce();
 });
 
 it("previews a hovered rating without changing the chosen one, and names the value", async () => {

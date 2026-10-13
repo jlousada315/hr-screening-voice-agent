@@ -47,3 +47,17 @@ it("focuses the thank-you heading and provides restart after submission", async 
   await user.click(screen.getByRole("button", { name: "Start another call" }));
   expect(restart).toHaveBeenCalledOnce();
 });
+
+it("previews a hovered rating without changing the chosen one, and names the value", async () => {
+  const user = userEvent.setup();
+  const submit = vi.fn();
+  render(<CallFeedbackForm status="ready" submit={submit} skip={vi.fn()} restart={vi.fn()} />);
+  await user.click(screen.getByRole("radio", { name: "4 stars" }));
+  expect(screen.getByText("Good")).toBeInTheDocument();
+  await user.hover(screen.getByLabelText("1 star"));
+  expect(screen.getByText("Poor")).toBeInTheDocument();
+  await user.unhover(screen.getByLabelText("1 star"));
+  expect(screen.getByText("Good")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Submit" }));
+  expect(submit).toHaveBeenCalledWith(4, "");
+});

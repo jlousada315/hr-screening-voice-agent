@@ -7,6 +7,10 @@ skills-lock.json
 .env.local
 *.local
 
+# Your profile: only the example persona is tracked.
+config/*
+!config/example.md
+
 # Local terms scripts/check_privacy.py must never find in tracked files.
 .privacy-denylist
 

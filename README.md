@@ -62,8 +62,9 @@ Restart both terminals to pick up the new profile.
 `config/owner.md` is the rep's only source of facts about you: a `# Name` heading, an
 `## Experience` list, a `## Links` list, and any other sections you like (About, Open to, FAQ),
 which the rep quotes as your own words. Add `Pronouns:` or `Booking:` (a scheduling link; the
-rep never reads your availability) under the name. Commit the file to your fork so your host
-deploys it. Without it, the rep runs as the fictional example persona and logs a warning. To
+rep never reads your availability) under the name. It's gitignored so your details stay out of
+commits; to deploy from a fork, add it with `git add -f config/owner.md` or mount it and set
+`OWNER_FILE`. Without it, the rep runs as the fictional example persona and logs a warning. To
 change how the rep behaves, edit `agent/src/hireme_agent/prompts/system.md`.
 
 ## Configuration

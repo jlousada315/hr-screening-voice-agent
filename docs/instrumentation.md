@@ -265,6 +265,29 @@ A **Call quality** dashboard built on these events should show:
 | `DEPLOYMENT_ENVIRONMENT` | Tag events (`development` by default, `production` on deployed instances). |
 | `NEXT_PUBLIC_POSTHOG_FEEDBACK_SURVEY_ID`, `…_RATING_QUESTION_ID`, `…_COMMENT_QUESTION_ID` | The end-of-call survey: a 1–5 rating question and an open-text question. All three are required, or the rating form is hidden. |
 
+### Setting up the rating survey
+
+The app renders its own rating form, so the PostHog survey is **headless**: an `api` survey, which never shows a popover. Create it once per PostHog project:
+
+| Field | Value |
+|---|---|
+| Name | AI Rep call rating |
+| Type | API (headless) |
+| Question 1 | Rating, **scale 5**, display: number, required. "How was your call?" (labels Poor → Excellent) |
+| Question 2 | Open text, optional. "Tell us more" |
+
+Copy the survey id and the two question ids into `.env`:
+
+```bash
+NEXT_PUBLIC_POSTHOG_FEEDBACK_SURVEY_ID=<survey id>
+NEXT_PUBLIC_POSTHOG_FEEDBACK_RATING_QUESTION_ID=<rating question id>
+NEXT_PUBLIC_POSTHOG_FEEDBACK_COMMENT_QUESTION_ID=<open question id>
+```
+
+Responses then appear under the survey in PostHog and on each call's LLM trace (the Feedback tab), because `survey sent` carries `$ai_trace_id`. The question wording is already built into the app's form (`CallFeedbackForm.tsx`), so keep the two in sync if either changes.
+
+A survey with a single-choice (thumbs) question doesn't work here: the app sends a number from 1 to 5 as the rating answer.
+
 ## Replaced events
 
 These events are no longer sent. Their history stays in PostHog, and insights built on them need re-pointing for data after the switch.

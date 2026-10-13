@@ -1,6 +1,5 @@
 # Runs the text/voice API: FastAPI calls Groq via Pydantic AI and ElevenLabs
 # for STT/TTS over HTTP. LLM_MODEL must use the groq/ prefix.
-# Pure Python; the optional Cal.com booking link needs no network access.
 
 FROM python:3.12-slim
 
@@ -8,7 +7,7 @@ ENV PYTHONUNBUFFERED=1 \
     UV_NO_CACHE=1
 
 # uv for installing the api package.
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.7.12 /uv /bin/
 
 WORKDIR /app
 

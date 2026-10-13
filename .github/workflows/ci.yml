@@ -11,9 +11,6 @@ permissions:
 jobs:
   python:
     runs-on: ubuntu-latest
-    env:
-      # The runner's system 3.12.3 predates CPython's async-generator aclose fixes.
-      UV_PYTHON_PREFERENCE: only-managed
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6

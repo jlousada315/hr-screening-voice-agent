@@ -4,6 +4,10 @@ version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = []
 
+[tool.uv]
+# System Pythons such as Ubuntu's 3.12.3 predate CPython's async-generator aclose fixes.
+python-preference = "only-managed"
+
 [tool.uv.workspace]
 members = ["agent", "api"]
 

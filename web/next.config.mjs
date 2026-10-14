@@ -38,6 +38,7 @@ const nextConfig = {
   env: {
     POSTHOG_API_KEY: process.env.POSTHOG_API_KEY?.trim() || "",
     POSTHOG_API_URL: process.env.POSTHOG_API_URL?.trim() || "https://eu.i.posthog.com",
+    DEPLOYMENT_ENVIRONMENT: process.env.DEPLOYMENT_ENVIRONMENT?.trim() || "development",
     OWNER_NAME: owner.name,
     OWNER_SHORT_NAME: owner.short_name || owner.name.split(/\s+/)[0],
     OWNER_POSSESSIVE: owner.possessive,

@@ -11,25 +11,26 @@ it("focuses the heading, requires a rating, supports keyboard radios and optiona
   render(<CallFeedbackForm status="ready" submit={submit} skip={vi.fn()} restart={vi.fn()} />);
   expect(screen.getByRole("heading")).toHaveFocus();
   expect(screen.getByRole("button", { name: "Submit" })).toBeDisabled();
+  expect(screen.getAllByRole("radio")).toHaveLength(5);
   await user.tab();
   await user.keyboard(" ");
-  expect(screen.getByRole("radio", { name: "Yes, helpful" })).toBeChecked();
-  await user.keyboard("{ArrowRight}");
-  expect(screen.getByRole("radio", { name: "No, not helpful" })).toBeChecked();
-  const comment = screen.getByLabelText("What could we improve? (optional)");
+  expect(screen.getByRole("radio", { name: "1 star" })).toBeChecked();
+  await user.keyboard("{ArrowRight}{ArrowRight}{ArrowRight}");
+  expect(screen.getByRole("radio", { name: "4 stars" })).toBeChecked();
+  const comment = screen.getByLabelText("Tell us more (optional)");
   expect(comment).toHaveAttribute("maxlength", "2000");
   await user.type(comment, "Clearer answers");
   await user.click(screen.getByRole("button", { name: "Submit" }));
-  expect(submit).toHaveBeenCalledWith("No, not helpful", "Clearer answers");
+  expect(submit).toHaveBeenCalledWith(4, "Clearer answers");
 });
 
 it("allows an empty comment, announces failures and keeps skip and restart available", async () => {
   const user = userEvent.setup();
   const submit = vi.fn(), skip = vi.fn(), restart = vi.fn();
   const view = render(<CallFeedbackForm status="ready" submit={submit} skip={skip} restart={restart} />);
-  await user.click(screen.getByRole("radio", { name: "Yes, helpful" }));
+  await user.click(screen.getByRole("radio", { name: "5 stars" }));
   await user.click(screen.getByRole("button", { name: "Submit" }));
-  expect(submit).toHaveBeenCalledWith("Yes, helpful", "");
+  expect(submit).toHaveBeenCalledWith(5, "");
   view.rerender(<CallFeedbackForm status="error" submit={submit} skip={skip} restart={restart} />);
   expect(screen.getByRole("status")).toHaveTextContent("Try again");
   await user.click(screen.getByRole("button", { name: "Skip" }));

@@ -96,6 +96,14 @@ class TurnObservation:
     input_state: str | None = None
     output_state: str | None = None
     unverified_links: int = 0  # invented URLs the link guard removed from the reply
+    # The browser's call id and turn number (greeting = 0), so traces join the call events.
+    call_id: str | None = None
+    turn_index: int | None = None
+    first_audio_seconds: float | None = None  # turn start → first reply sentence synthesized
+
+    def mark_first_audio(self) -> None:
+        if self.first_audio_seconds is None:
+            self.first_audio_seconds = perf_counter() - self.started
 
     @property
     def metadata(self) -> dict:
@@ -114,6 +122,8 @@ class TurnObservation:
         }
         if self.session_id:
             meta["$session_id"] = self.session_id
+        if self.call_id:
+            meta["call_id"] = self.call_id
         return meta
 
     def _emit(
@@ -171,6 +181,13 @@ class TurnObservation:
         failure = error if error is not None else self.error
         duration = perf_counter() - self.started
         states = _states(self.input_state, self.output_state)
+        turn = {}
+        if self.turn_index is not None:
+            turn["turn_index"] = self.turn_index
+        if self.first_audio_seconds is not None:
+            turn["first_audio_seconds"] = self.first_audio_seconds
+        if self.unverified_links:
+            turn["unverified_link_count"] = self.unverified_links
         self._emit(
             "$ai_span",
             self.turn_span_id,
@@ -178,8 +195,7 @@ class TurnObservation:
             self.started_at,
             duration,
             failure,
-            **{"$ai_parent_id": self.trace_id, **states},
-            **({"unverified_link_count": self.unverified_links} if self.unverified_links else {}),
+            **{"$ai_parent_id": self.trace_id, **states, **turn},
         )
         # Carries the latest turn's states, so the call's row reads as its last exchange.
         self._emit(

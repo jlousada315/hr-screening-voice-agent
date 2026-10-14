@@ -382,6 +382,8 @@ async def test_rate_limited_voice_turn_speaks_a_busy_reply(monkeypatch):
     assert [e["type"] for e in events] == ["transcript", "sentence", "done"]
     assert "busy" in events[1]["text"]
     assert events[2]["trace_id"] == obs.trace_id
+    assert events[2]["fallback"] is True  # the browser reports the reply as a fallback
+    assert obs.first_audio_seconds is not None
     assert turns._is_transient_provider_error(RateLimited())
 
 

@@ -6,13 +6,14 @@ import { useVoiceCall } from "./useVoiceCall";
 const mocks = vi.hoisted(() => ({
   options: null as null | {
     enabled: boolean; muted: boolean;
-    onUtterance: (audio: Blob) => void; onError: (message: string) => void;
+    onUtterance: (audio: Blob, timing?: { speechMs: number; speechEndedAt: number }) => void;
+    onError: (message: string) => void;
     onEvent?: (name: string, props: Record<string, unknown>) => void;
   },
   started: false,
   start: vi.fn(async () => { mocks.started = true; }),
   stop: vi.fn(() => { mocks.started = false; }),
-  capture: vi.fn((_event: string, _props?: Record<string, unknown>) => ({ uuid: "accepted" })),
+  capture: vi.fn((_event: string, _props?: Record<string, unknown>, _options?: Record<string, unknown>) => ({ uuid: "accepted" })),
   optedOut: vi.fn(() => false),
   distinct: vi.fn(() => "person"),
   session: vi.fn(() => "visit"),
@@ -70,9 +71,12 @@ async function setupCall() {
   return hook;
 }
 
-async function utterance() {
-  await act(async () => { mocks.options?.onUtterance(new Blob(["speech"], { type: "audio/webm" })); });
+async function utterance(timing?: { speechMs: number; speechEndedAt: number }) {
+  await act(async () => { mocks.options?.onUtterance(new Blob(["speech"], { type: "audio/webm" }), timing); });
 }
+
+const captured = (name: string) =>
+  mocks.capture.mock.calls.filter(([event]) => event === name).map(([, props]) => props);
 
 beforeEach(() => {
   mocks.options = null;
@@ -107,7 +111,7 @@ describe("end-of-call feedback", () => {
     vi.stubEnv("NEXT_PUBLIC_POSTHOG_FEEDBACK_COMMENT_QUESTION_ID", "comment");
   }
 
-  it("preserves ordered unique traces and original identity after cleanup and submits once", async () => {
+  it("snapshots the call and original identity after cleanup and submits the 1–5 rating once", async () => {
     configure();
     fetchMock.mockResolvedValueOnce(replyResponse("One", "thread", "", "one"))
       .mockResolvedValueOnce(replyResponse("Two", "thread", "", "two"))
@@ -119,26 +123,30 @@ describe("end-of-call feedback", () => {
     act(() => result.current.hangUp());
     expect(mocks.stop).toHaveBeenCalledOnce();
     expect(result.current.messages).toEqual([]);
+    const callId = captured("voice_call_started")[0]?.call_id;
+    expect(callId).toEqual(expect.any(String));
     expect(result.current.feedback?.snapshot).toEqual({
-      conversationId: "thread", traceIds: ["one", "two"], distinctId: "person", sessionId: "visit",
+      conversationId: "thread", callId, distinctId: "person", sessionId: "visit",
     });
+    expect(captured("voice_call_ended")).toEqual([expect.objectContaining({
+      call_id: callId, conversation_id: "thread", feedback_shown: true,
+    })]);
     expect((fetchMock.mock.calls[1][1].body as FormData).get("session_id")).toBe("visit");
     act(() => {
-      result.current.submitFeedback("Yes, helpful", "Good call");
-      result.current.submitFeedback("Yes, helpful", "duplicate");
+      result.current.submitFeedback(4, "Good call");
+      result.current.submitFeedback(5, "duplicate");
       result.current.hangUp();
     });
-    const sent = mocks.capture.mock.calls.filter(([event]) => event === "survey sent");
+    const sent = captured("survey sent");
     expect(sent).toHaveLength(1);
-    expect(sent[0][1]).toMatchObject({
-      $survey_id: "survey", $survey_completed: true, $survey_response_rating: "Yes, helpful",
-      $survey_response_comment: "Good call", $ai_trace_id: "two", ai_trace_ids: ["one", "two"],
+    expect(sent[0]).toMatchObject({
+      $survey_id: "survey", $survey_completed: true, $survey_response_rating: 4,
+      $survey_response_comment: "Good call", $ai_trace_id: "thread", call_id: callId,
       $ai_session_id: "thread", $session_id: "visit", distinct_id: "person",
     });
-    expect(mocks.capture.mock.calls.filter(([event]) => event === "survey shown")).toHaveLength(1);
-    const linked = mocks.capture.mock.calls.filter(([event]) => event === "voice_call_feedback_linked");
-    expect(linked.map(([, props]) => props?.$ai_trace_id)).toEqual(["one", "two"]);
-    expect(linked[0][1]?.$survey_submission_id).toBe(sent[0][1]?.$survey_submission_id);
+    expect(mocks.capture.mock.calls.at(-1)?.[0]).toBe("survey sent");
+    expect(captured("survey shown")).toHaveLength(0);
+    expect(captured("voice_call_feedback_linked")).toHaveLength(0);
     expect(result.current.feedbackStatus).toBe("submitted");
     await act(async () => result.current.activate());
     expect(result.current.feedback).toBeNull();
@@ -146,36 +154,35 @@ describe("end-of-call feedback", () => {
     await utterance();
     expect((fetchMock.mock.calls[3][1].body as FormData).get("conversation_id")).toBeNull();
     act(() => result.current.hangUp());
-    expect(result.current.feedback?.snapshot.traceIds).toEqual(["new-trace"]);
+    expect(result.current.feedback?.snapshot.conversationId).toBe("new");
+    expect(result.current.feedback?.snapshot.callId).not.toBe(callId);
   });
 
   it("offers no feedback for a call that never got past the greeting", async () => {
     configure();
     greetingMock.mockResolvedValue(replyResponse("Hi.", "thread", "", "greeting"));
     const { result } = await setupCall();
-    await waitFor(() => expect(mocks.capture).toHaveBeenCalledWith(
-      "voice_call_greeting_played", expect.anything()));
+    await waitFor(() => expect(captured("voice_call_ai_replied")).toEqual([
+      expect.objectContaining({ is_greeting: true, turn_index: 0, had_audio: false })]));
     act(() => result.current.hangUp());
     expect(result.current.feedback).toBeNull();
-    expect(mocks.capture.mock.calls.some(([event]) => event === "survey shown")).toBe(false);
+    expect(captured("voice_call_ended")[0]).toMatchObject({ feedback_shown: false, ai_replies: 1 });
   });
 
-  it("retries only unaccepted events and freezes answers after partial capture failure", async () => {
+  it("retries a failed send and freezes the first answers", async () => {
     configure();
     fetchMock.mockResolvedValue(replyResponse("Reply", "thread", ""));
     const { result } = await setupCall(); await utterance();
     act(() => result.current.hangUp());
-    mocks.capture.mockImplementation((event) => {
-      if (event === "voice_call_feedback_linked") throw new Error("offline");
-      return { uuid: "accepted" };
-    });
-    act(() => result.current.submitFeedback("No, not helpful", "Improve"));
+    mocks.capture.mockImplementation(() => { throw new Error("offline"); });
+    act(() => result.current.submitFeedback(2, "Improve"));
     expect(result.current.feedbackStatus).toBe("error");
     mocks.capture.mockImplementation(() => ({ uuid: "accepted" }));
-    act(() => result.current.submitFeedback("Yes, helpful", "changed"));
+    act(() => result.current.submitFeedback(5, "changed"));
     expect(result.current.feedbackStatus).toBe("submitted");
-    expect(mocks.capture.mock.calls.filter(([event]) => event === "survey sent")).toHaveLength(1);
-    expect(mocks.capture.mock.calls.at(-1)?.[1]?.rating).toBe("No, not helpful");
+    expect(mocks.capture.mock.calls.at(-1)?.[1]).toMatchObject({
+      $survey_response_rating: 2, $survey_response_comment: "Improve",
+    });
   });
 
   it.each(["missing config", "opt out", "no completed turns", "identity error"])("hides feedback for %s", async (reason) => {
@@ -190,7 +197,7 @@ describe("end-of-call feedback", () => {
     expect(result.current.phase).toBe("idle");
   });
 
-  it("excludes interrupted completions and allows skip/restart after analytics exceptions", async () => {
+  it("offers feedback after an interrupted turn and allows skip/restart after analytics exceptions", async () => {
     configure();
     const stream = streamingResponse();
     fetchMock.mockResolvedValueOnce(replyResponse("Reply", "thread", "", "completed"))
@@ -199,8 +206,8 @@ describe("end-of-call feedback", () => {
     act(() => result.current.activate());
     mocks.capture.mockImplementation(() => { throw new Error("analytics down"); });
     act(() => result.current.hangUp());
-    expect(result.current.feedback?.snapshot.traceIds).toEqual(["completed"]);
-    expect(result.current.feedbackStatus).toBe("error");
+    expect(result.current.feedback?.snapshot.conversationId).toBe("thread");
+    expect(result.current.feedbackStatus).toBe("ready");
     act(() => result.current.skipFeedback());
     expect(result.current.feedback).toBeNull();
     await act(async () => result.current.activate());
@@ -298,7 +305,10 @@ describe("call session", () => {
     act(() => { result.current.toggleMute(); result.current.hangUp(); });
     expect(result.current).toMatchObject({ phase: "idle", muted: false, messages: [], elapsedSeconds: 0 });
     expect(mocks.stop).toHaveBeenCalledTimes(1);
-    expect(mocks.capture).toHaveBeenCalledWith("voice_call_ended", { conversation_id: "thread" });
+    expect(captured("voice_call_ended")).toEqual([expect.objectContaining({
+      conversation_id: "thread", end_reason: "hang_up", duration_seconds: 65,
+      user_turns: 1, ai_replies: 1, failures: 1, // the default greeting fails, recoverably
+    })]);
     act(() => vi.advanceTimersByTime(5_000));
     expect(result.current.elapsedSeconds).toBe(0);
     await act(async () => { result.current.activate(); });
@@ -306,22 +316,60 @@ describe("call session", () => {
     expect((fetchMock.mock.calls[1][1].body as FormData).get("conversation_id")).toBeNull();
   });
 
-  it("preserves analytics names/properties and measures first audio, rather than done", async () => {
+  it("captures start, progress, failure and end with turn timings", async () => {
     let now = 1_000;
     vi.spyOn(Date, "now").mockImplementation(() => now);
     const stream = streamingResponse();
     fetchMock.mockResolvedValue(stream.response);
-    await setupCall();
-    await utterance();
+    const { result } = await setupCall();
+    await utterance({ speechMs: 700, speechEndedAt: 900 });
+    const form = fetchMock.mock.calls[0][1].body as FormData;
+    const callId = form.get("call_id");
+    expect(form.get("turn_index")).toBe("1");
+    now = 1_020;
+    await act(async () => { stream.send({ type: "transcript", text: "Hi" }); });
     now = 1_040;
     await act(async () => { stream.send({ type: "sentence", text: "Reply", audio: "first" }); });
     now = 1_300;
     await act(async () => { stream.send({ type: "done", conversation_id: "thread" }); });
+    expect(captured("voice_call_ai_replied")).toHaveLength(0); // still playing
+    now = 1_500;
+    act(() => audios[0].onended?.());
+    now = 5_000;
+    act(() => result.current.hangUp());
     expect(mocks.capture.mock.calls).toEqual([
-      ["voice_call_started"],
-      ["chat_message_sent", { mode: "voice", conversation_id: null }],
-      ["chat_reply_received", { mode: "voice", latency_ms: 40, conversation_id: "thread", had_audio: true }],
+      ["voice_call_started", { call_id: callId }],
+      ["voice_call_failed", {
+        call_id: callId, conversation_id: null, turn_index: 0, stage: "connecting",
+        reason: "greeting_failed", recoverable: true,
+      }],
+      ["voice_call_user_spoke", {
+        call_id: callId, conversation_id: null, turn_index: 1, heard: true, speech_ms: 700,
+        time_to_transcript_ms: 20,
+      }],
+      ["voice_call_ai_replied", {
+        call_id: callId, conversation_id: "thread", turn_index: 1, is_greeting: false,
+        time_to_first_audio_ms: 40, voice_to_voice_ms: 140, reply_ms: 460, sentences: 1,
+        had_audio: true, fallback_reply: false, interrupted: false, interrupted_after_ms: null,
+      }],
+      ["voice_call_ended", {
+        call_id: callId, conversation_id: "thread", end_reason: "hang_up", duration_seconds: 4,
+        user_turns: 1, user_turns_not_heard: 0, ai_replies: 1, interruptions: 0, failures: 1,
+        voice_to_voice_p50_ms: 140, voice_to_voice_max_ms: 140, feedback_shown: false,
+      }],
     ]);
+  });
+
+  it("ends the call with a beacon when the page closes, once", async () => {
+    fetchMock.mockResolvedValue(replyResponse("Reply", "thread", ""));
+    const { result } = await setupCall();
+    await utterance();
+    act(() => { window.dispatchEvent(new Event("pagehide")); });
+    act(() => result.current.hangUp());
+    const ended = mocks.capture.mock.calls.filter(([event]) => event === "voice_call_ended");
+    expect(ended).toHaveLength(1);
+    expect(ended[0][1]).toMatchObject({ end_reason: "page_closed", user_turns: 1 });
+    expect(ended[0][2]).toEqual({ transport: "sendBeacon" });
   });
 });
 
@@ -339,6 +387,11 @@ describe("recovery and stale work", () => {
     await act(async () => { staleEnd?.(); playing.reject(new Error("old playback")); });
     expect(result.current.phase).toBe("listening");
     expect(result.current.messages).toHaveLength(2);
+    expect(captured("voice_call_ai_replied")).toEqual([expect.objectContaining({
+      turn_index: 1, interrupted: true, interrupted_after_ms: expect.any(Number),
+    })]);
+    expect(captured("voice_call_failed").filter((props) => props?.reason === "playback_failed"))
+      .toHaveLength(0);
   });
 
   it("ignores late fetch resolution after hang-up and a newer call", async () => {
@@ -354,7 +407,7 @@ describe("recovery and stale work", () => {
     await act(async () => { old.resolve(replyResponse("Old reply", "old")); });
     expect(result.current.phase).toBe("listening");
     expect(result.current.messages).toEqual([{ role: "me", text: "🎤 Question" }, { role: "rep", text: "New reply" }]);
-    expect(mocks.capture.mock.calls.filter(([name]) => name === "chat_reply_received")).toHaveLength(1);
+    expect(captured("voice_call_ai_replied")).toHaveLength(1);
   });
 
   it("ignores late frames from a reader that does not honor abort, without clearing the newer request", async () => {
@@ -396,7 +449,9 @@ describe("recovery and stale work", () => {
     expect(signal.aborted).toBe(true);
     expect(mocks.stop).toHaveBeenCalledTimes(2);
     act(() => error("late"));
-    expect(mocks.capture.mock.calls.filter(([name]) => name === "chat_reply_received")).toHaveLength(1);
+    // A reply cut off by hanging up is not an interruption, and late errors aren't failures.
+    expect(captured("voice_call_ai_replied")).toHaveLength(0);
+    expect(captured("voice_call_failed").map((props) => props?.reason)).toEqual(["greeting_failed", "greeting_failed"]);
   });
 
   it("handles streaming errors without a later done/drain overriding the error, then resumes capture", async () => {
@@ -409,6 +464,9 @@ describe("recovery and stale work", () => {
     await utterance();
     expect(result.current.phase).toBe("error");
     expect(result.current.messages.at(-1)?.text).toMatch(/reply failed/);
+    expect(captured("voice_call_failed").at(-1)).toMatchObject({
+      reason: "reply_failed", stage: "ai_replying", recoverable: false, turn_index: 1,
+    });
     expect(audios[0].pause).toHaveBeenCalled();
     act(() => audios[0].onended?.());
     expect(result.current.phase).toBe("error");
@@ -417,8 +475,14 @@ describe("recovery and stale work", () => {
     expect(mocks.start).toHaveBeenCalledTimes(1);
   });
 
-  it.each(["network", "status", "missing body", "premature end", "invalid JSON"])("recovers from %s errors", async (kind) => {
-    if (kind === "network") fetchMock.mockRejectedValue(new Error("offline"));
+  it.each([
+    ["network", { reason: "network_error", stage: "user_speaking" }],
+    ["status", { reason: "stt_failed", stage: "user_speaking", http_status: 502 }],
+    ["missing body", { reason: "stream_ended" }],
+    ["premature end", { reason: "stream_ended" }],
+    ["invalid JSON", { reason: "stream_ended" }],
+  ])("recovers from %s errors", async (kind, failure) => {
+    if (kind === "network") fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
     else if (kind === "status") fetchMock.mockResolvedValue(new Response("failed", { status: 502 }));
     else if (kind === "missing body") fetchMock.mockResolvedValue(new Response(null));
     else {
@@ -431,6 +495,7 @@ describe("recovery and stale work", () => {
     await utterance();
     await waitFor(() => expect(result.current.phase).toBe("error"));
     expect(result.current.messages.at(-1)?.text).toMatch(/connection error/);
+    expect(captured("voice_call_failed").at(-1)).toMatchObject({ ...failure, recoverable: false });
     act(() => result.current.activate());
     expect(result.current.phase).toBe("listening");
     expect(mocks.start).toHaveBeenCalledTimes(1);
@@ -442,18 +507,18 @@ describe("recovery and stale work", () => {
     await utterance();
     await waitFor(() => expect(result.current.phase).toBe("listening"));
     expect(result.current.messages).toEqual([]);
-    expect(mocks.capture).toHaveBeenCalledWith("voice_utterance_not_heard", { conversation_id: null });
+    expect(captured("voice_call_user_spoke")).toEqual([expect.objectContaining({
+      turn_index: 1, heard: false, time_to_transcript_ms: null,
+    })]);
+    expect(captured("voice_call_ai_replied")).toHaveLength(0);
     fetchMock.mockResolvedValue(replyResponse());
     await utterance();
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("forwards detector diagnostics to analytics with the conversation id", async () => {
-    const { result } = await setupCall();
-    act(() => mocks.options?.onEvent?.("voice_listening_idle", { peak_rms: 0.01 }));
-    expect(mocks.capture).toHaveBeenCalledWith(
-      "voice_listening_idle", { peak_rms: 0.01, conversation_id: null });
-    expect(result.current.phase).toBe("listening");
+  it("keeps detector diagnostics out of analytics", async () => {
+    await setupCall();
+    expect(mocks.options?.onEvent).toBeUndefined();
   });
 
   it("reports current playback rejection and can recover", async () => {
@@ -465,6 +530,9 @@ describe("recovery and stale work", () => {
     await act(async () => playing.reject(new Error("blocked")));
     expect(result.current.phase).toBe("error");
     expect(result.current.messages.at(-1)?.text).toMatch(/couldn't play/);
+    expect(captured("voice_call_failed").at(-1)).toMatchObject({
+      reason: "playback_failed", stage: "ai_replying",
+    });
     act(() => result.current.activate());
     expect(result.current.phase).toBe("listening");
   });
@@ -473,8 +541,12 @@ describe("recovery and stale work", () => {
     const { result } = await setupCall();
     act(() => { mocks.started = false; mocks.options?.onError("couldn't access the microphone"); });
     expect(result.current.phase).toBe("error");
+    expect(captured("voice_call_failed").at(-1)).toMatchObject({
+      reason: "mic_denied", stage: "user_speaking", recoverable: false,
+    });
     await act(async () => result.current.activate());
     expect(mocks.start).toHaveBeenCalledTimes(2);
+    expect(captured("voice_call_started")).toHaveLength(1); // resuming is the same call
     act(() => mocks.options?.onError("recording failed"));
     act(() => result.current.activate());
     expect(mocks.start).toHaveBeenCalledTimes(2);
@@ -550,7 +622,7 @@ describe("call greeting", () => {
     const { result } = await setupCall();
     expect(greetingMock.mock.calls[0][0]).toBe("http://localhost:8000/greeting");
     expect(JSON.parse(greetingMock.mock.calls[0][1].body)).toEqual({
-      distinct_id: "person", session_id: "visit",
+      distinct_id: "person", session_id: "visit", call_id: expect.any(String),
     });
     expect(mocks.start).toHaveBeenCalledTimes(1);
     expect(result.current.phase).toBe("speaking");
@@ -567,10 +639,10 @@ describe("call greeting", () => {
     await utterance();
     const body = fetchMock.mock.calls[0][1].body as FormData;
     expect(body.get("conversation_id")).toBe("call");
-    expect(mocks.capture).toHaveBeenCalledWith(
-      "voice_call_greeting_played",
-      expect.objectContaining({ conversation_id: "call", had_audio: true }),
-    );
+    expect(captured("voice_call_ai_replied")[0]).toMatchObject({
+      conversation_id: "call", turn_index: 0, is_greeting: true, had_audio: true,
+      interrupted: false, voice_to_voice_ms: null,
+    });
   });
 
   it("falls straight through to listening when the greeting has no audio", async () => {
@@ -597,6 +669,9 @@ describe("call greeting", () => {
     await act(async () => playing.reject(new Error("autoplay blocked")));
     expect(result.current.phase).toBe("listening");
     expect(result.current.messages.every((m) => !/couldn't play/.test(m.text))).toBe(true);
+    expect(captured("voice_call_failed")).toEqual([expect.objectContaining({
+      reason: "playback_failed", stage: "connecting", recoverable: true,
+    })]);
   });
 
   it("lets the caller barge in over the greeting", async () => {
@@ -607,6 +682,9 @@ describe("call greeting", () => {
     act(() => result.current.activate());
     expect(audios[0].pause).toHaveBeenCalled();
     expect(result.current.phase).toBe("listening");
+    expect(captured("voice_call_ai_replied")).toEqual([expect.objectContaining({
+      is_greeting: true, interrupted: true,
+    })]);
   });
 
   it("aborts a greeting that is still loading when the caller hangs up", async () => {

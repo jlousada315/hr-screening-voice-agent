@@ -605,3 +605,52 @@ def test_trace_state_is_bounded():
     assert len(states["$ai_input_state"]) == obs._STATE_LIMIT
     assert len(states["$ai_output_state"]) == obs._STATE_LIMIT
     assert obs._states(None, "") == {}
+
+
+def _voice_turn(monkeypatch, **fields):
+    monkeypatch.setattr(turns, "_transcribe", AsyncMock(return_value="question"))
+    monkeypatch.setattr(turns, "_synthesize", AsyncMock(return_value=b"audio"))
+    monkeypatch.setattr(provider, "complete", make_acompletion_stream("One.", " Two."))
+    return TestClient(runtime.app).post(
+        "/turn",
+        data={"distinct_id": "visitor", **fields},
+        files={"audio": ("clip.webm", b"audio", "audio/webm")},
+    )
+
+
+def test_voice_turn_carries_call_id_turn_index_and_timings(monkeypatch, events):
+    response = _voice_turn(monkeypatch, call_id="call-1", turn_index="3")
+    assert response.status_code == 200
+    assert all(props["call_id"] == "call-1" for _, _, props, _ in events)
+    (turn,) = [
+        props
+        for event, _, props, _ in events
+        if event == "$ai_span" and props["$ai_span_name"] == obs.TURN_SPAN_NAME
+    ]
+    assert turn["turn_index"] == 3
+    assert turn["first_audio_seconds"] >= 0
+    (generation,) = [props for event, _, props, _ in events if event == "$ai_generation"]
+    assert generation["$ai_stream"] is True
+    assert 0 <= generation["$ai_time_to_first_token"] <= generation["$ai_latency"]
+
+
+@pytest.mark.parametrize("turn_index", ["abc", "-1", "1.5", ""])
+def test_malformed_turn_index_is_dropped_not_rejected(monkeypatch, events, turn_index):
+    assert _voice_turn(monkeypatch, turn_index=turn_index).status_code == 200
+    spans = [props for event, _, props, _ in events if event == "$ai_span"]
+    assert all("turn_index" not in props and "call_id" not in props for props in spans)
+
+
+def test_greeting_is_turn_zero_of_the_call(monkeypatch, events):
+    turns._greeting_audio.clear()
+    monkeypatch.setattr(turns, "_synthesize", AsyncMock(return_value=b"audio"))
+    response = TestClient(runtime.app).post("/greeting", json={"call_id": "call-1"})
+    assert response.status_code == 200
+    (turn,) = [
+        props
+        for event, _, props, _ in events
+        if event == "$ai_span" and props["$ai_span_name"] == obs.TURN_SPAN_NAME
+    ]
+    assert turn["call_id"] == "call-1"
+    assert turn["turn_index"] == 0
+    assert turn["first_audio_seconds"] >= 0

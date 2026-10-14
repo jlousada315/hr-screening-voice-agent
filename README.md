@@ -81,7 +81,9 @@ variables take precedence.
 | `API_SHARED_SECRET` | Bearer token required on `/turn` and `/greeting`; set it when the API is public. |
 | `OWNER_FILE` | Optional path to the owner file (default `config/owner.md`, then `config/example.md`). |
 | `POSTHOG_API_KEY`, `POSTHOG_API_URL`, `DEPLOYMENT_ENVIRONMENT` | Optional LLM tracing and browser analytics. |
-| `NEXT_PUBLIC_POSTHOG_FEEDBACK_*` | Optional end-of-call feedback survey (survey, rating and comment question IDs). |
+| `NEXT_PUBLIC_POSTHOG_FEEDBACK_*` | Optional end-of-call feedback survey (survey, 1–5 rating and comment question IDs). |
+
+What gets tracked, and how a call is measured, is documented in [docs/instrumentation.md](docs/instrumentation.md).
 
 ## How it works
 

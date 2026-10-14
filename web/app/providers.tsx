@@ -6,6 +6,7 @@ import { PostHogProvider } from "posthog-js/react";
 
 const POSTHOG_KEY = process.env.POSTHOG_API_KEY;
 const POSTHOG_HOST = process.env.POSTHOG_API_URL;
+const DEPLOYMENT_ENVIRONMENT = process.env.DEPLOYMENT_ENVIRONMENT;
 
 export function Providers({ children }: { children: React.ReactNode }) {
   // Only initialize once, on the client, and only when a key is configured.
@@ -21,7 +22,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
         capture_pageview: true,
         capture_pageleave: true,
         capture_performance: { web_vitals: true },
+        capture_exceptions: true,
       });
+      // Tag browser events like the API tags its traces, so dev calls can be filtered out.
+      posthog.register({ app_name: "hireme-web", deployment_environment: DEPLOYMENT_ENVIRONMENT });
       setReady(true);
     } catch { /* The call remains usable when analytics initialization fails. */ }
   }, []);

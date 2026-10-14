@@ -24,34 +24,28 @@ it("rejects duplicate question IDs and missing SDK", () => {
   expect(analyticsAvailable(undefined)).toBe(false);
 });
 
-it("retries SDK rejection without duplicating accepted impressions or links", () => {
-  const capture = vi.fn<(...args: unknown[]) => unknown>().mockReturnValue({ uuid: "accepted" });
+it("sends the call's final event once, retrying a rejection with the first answers", () => {
+  const capture = vi.fn<(...args: unknown[]) => unknown>().mockReturnValueOnce(undefined)
+    .mockReturnValue({ uuid: "accepted" });
   const client = { capture, has_opted_out_capturing: () => false } as unknown as PostHog;
-  const feedback = new CallFeedback({ conversationId: "call", traceIds: ["one", "two"] });
-  feedback.shown(client);
-  capture.mockReturnValueOnce(undefined);
-  expect(() => feedback.submit(client, "Yes, helpful", "")).toThrow("not accepted");
-  capture.mockImplementation((event, props) => {
-    if (event === "voice_call_feedback_linked" && (props as Record<string, unknown>).$ai_trace_id === "two") {
-      throw new Error("link failed");
-    }
-    return { uuid: "accepted" };
+  const feedback = new CallFeedback({ conversationId: "conversation", callId: "call" });
+  expect(() => feedback.submit(client, 4, " Good ")).toThrow("not accepted");
+  expect(feedback.submit(client, 1, "changed")).toBe(true);
+  expect(feedback.submit(client, 2, "again")).toBe(true);
+  expect(capture).toHaveBeenCalledTimes(2);
+  expect(capture.mock.calls.every(([event]) => event === "survey sent")).toBe(true);
+  expect(capture.mock.calls[1][1]).toMatchObject({
+    $survey_id: "survey", $survey_completed: true, $survey_response_rating: 4,
+    $survey_response_comment: "Good", $ai_trace_id: "conversation", $ai_session_id: "conversation",
+    conversation_id: "conversation", call_id: "call",
+    $survey_submission_id: feedback.submissionId,
   });
-  expect(() => feedback.submit(client, "Yes, helpful", "")).toThrow("link failed");
-  capture.mockReturnValue({ uuid: "accepted" });
-  expect(feedback.submit(client, "Yes, helpful", "")).toBe(true);
-  expect(capture.mock.calls.filter(([event]) => event === "survey shown")).toHaveLength(1);
-  expect(capture.mock.calls.filter(([event, props]) => event === "voice_call_feedback_linked" &&
-    (props as Record<string, unknown>).$ai_trace_id === "one")).toHaveLength(1);
 });
 
-it("checks opt-out again before capturing a response", () => {
+it("checks opt-out before capturing a response", () => {
   const capture = vi.fn(() => ({ uuid: "accepted" }));
-  const optedOut = vi.fn(() => false);
-  const client = { capture, has_opted_out_capturing: optedOut } as unknown as PostHog;
-  const feedback = new CallFeedback({ conversationId: "call", traceIds: ["one"] });
-  feedback.shown(client);
-  optedOut.mockReturnValue(true);
-  expect(() => feedback.submit(client, "Yes, helpful", "")).toThrow("unavailable");
-  expect(capture).toHaveBeenCalledOnce();
+  const client = { capture, has_opted_out_capturing: () => true } as unknown as PostHog;
+  const feedback = new CallFeedback({ conversationId: "conversation", callId: "call" });
+  expect(() => feedback.submit(client, 5, "")).toThrow("unavailable");
+  expect(capture).not.toHaveBeenCalled();
 });

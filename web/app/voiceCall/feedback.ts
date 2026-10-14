@@ -1,8 +1,9 @@
 import type { PostHog } from "posthog-js";
 
 export type CallIdentity = { distinctId?: string; sessionId?: string };
-export type FeedbackSnapshot = CallIdentity & { conversationId: string; traceIds: string[] };
-export type Rating = "Yes, helpful" | "No, not helpful";
+// One call is one trace: the backend uses the conversation id as the trace id.
+export type FeedbackSnapshot = CallIdentity & { conversationId: string; callId: string };
+export type Rating = 1 | 2 | 3 | 4 | 5;
 
 export function feedbackConfig() {
   const surveyId = process.env.NEXT_PUBLIC_POSTHOG_FEEDBACK_SURVEY_ID?.trim();
@@ -28,55 +29,40 @@ export function feedbackProperties(snapshot: FeedbackSnapshot, submissionId: str
     distinct_id: snapshot.distinctId,
     $session_id: snapshot.sessionId,
     $ai_session_id: snapshot.conversationId,
+    $ai_trace_id: snapshot.conversationId,
     conversation_id: snapshot.conversationId,
-    $ai_trace_id: snapshot.traceIds.at(-1),
-    ai_trace_ids: snapshot.traceIds,
+    call_id: snapshot.callId,
     $survey_submission_id: submissionId,
   };
 }
 
-/** A call-scoped ledger: retries only enqueue events the SDK hasn't accepted. */
+/** The call's final event: one `survey sent` with the 1–5 rating and comment, sent once. */
 export class CallFeedback {
   readonly submissionId = crypto.randomUUID();
-  private accepted = new Set<string>();
+  private accepted = false;
   private answers: { rating: Rating; comment: string } | null = null;
   private busy = false;
   readonly config = feedbackConfig();
 
   constructor(readonly snapshot: FeedbackSnapshot) {}
 
-  private capture(client: PostHog, key: string, event: string, props: Record<string, unknown>) {
-    if (this.accepted.has(key)) return;
-    if (!analyticsAvailable(client)) throw new Error("Analytics unavailable");
-    const result = client.capture(event, {
-      ...feedbackProperties(this.snapshot, this.submissionId),
-      $survey_id: this.config!.surveyId,
-      ...props,
-    });
-    if (!result) throw new Error("Capture was not accepted");
-    this.accepted.add(key);
-  }
-
-  shown(client: PostHog) {
-    this.capture(client, "shown", "survey shown", {});
-  }
-
   submit(client: PostHog, rating: Rating, comment: string): boolean {
     if (this.busy || !this.config || comment.length > 2000) return false;
+    if (this.accepted) return true;
     this.busy = true;
+    // A retry resends the first answers, so a failed send can't be edited into another.
     this.answers ??= { rating, comment: comment.trim() };
     try {
-      this.shown(client);
-      this.capture(client, "sent", "survey sent", {
+      if (!analyticsAvailable(client)) throw new Error("Analytics unavailable");
+      const result = client.capture("survey sent", {
+        ...feedbackProperties(this.snapshot, this.submissionId),
+        $survey_id: this.config.surveyId,
         $survey_completed: true,
         [`$survey_response_${this.config.ratingId}`]: this.answers.rating,
         [`$survey_response_${this.config.commentId}`]: this.answers.comment,
       });
-      for (const traceId of this.snapshot.traceIds) {
-        this.capture(client, traceId, "voice_call_feedback_linked", {
-          $ai_trace_id: traceId, rating: this.answers.rating,
-        });
-      }
+      if (!result) throw new Error("Capture was not accepted");
+      this.accepted = true;
       return true;
     } finally { this.busy = false; }
   }

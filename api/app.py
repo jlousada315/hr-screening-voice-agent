@@ -162,6 +162,18 @@ def _identifier(payload, field: str) -> str | None:
     return value or None
 
 
+def _turn_index(payload) -> int | None:
+    """Analytics only, so a malformed value is dropped instead of failing the turn."""
+    value = payload.get("turn_index")
+    if isinstance(value, bool):
+        return None
+    try:
+        index = int(value)
+    except (TypeError, ValueError):
+        return None
+    return index if 0 <= index <= 10_000 else None
+
+
 async def _parse_turn(request: Request) -> conversation_turn.TextTurn | conversation_turn.VoiceTurn:
     if request.headers.get("content-type", "").startswith("multipart/form-data"):
         try:
@@ -175,6 +187,8 @@ async def _parse_turn(request: Request) -> conversation_turn.TextTurn | conversa
                     conversation_id=_identifier(form, "conversation_id"),
                     distinct_id=_identifier(form, "distinct_id"),
                     session_id=_identifier(form, "session_id"),
+                    call_id=_identifier(form, "call_id"),
+                    turn_index=_turn_index(form),
                 )
         except HTTPException:
             raise
@@ -193,6 +207,8 @@ async def _parse_turn(request: Request) -> conversation_turn.TextTurn | conversa
         conversation_id=_identifier(payload, "conversation_id"),
         distinct_id=_identifier(payload, "distinct_id"),
         session_id=_identifier(payload, "session_id"),
+        call_id=_identifier(payload, "call_id"),
+        turn_index=_turn_index(payload),
     )
 
 
@@ -227,6 +243,7 @@ async def greeting(request: Request) -> StreamingResponse:
         conversation_turn.GreetingTurn(
             distinct_id=_identifier(payload, "distinct_id"),
             session_id=_identifier(payload, "session_id"),
+            call_id=_identifier(payload, "call_id"),
         )
     )
     return _sse_response(events)

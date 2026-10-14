@@ -171,6 +171,8 @@ Every `$ai_*` event carries:
 - `deployment_environment`, `app_name: "hireme-agent"`
 - `$ai_latency`, `$ai_is_error`
 
+`$ai_time_to_first_token` is set at the model's first output part, whether that is text or a tool call, so turns that end in a tool or an output function (online presence, booking link) have it too.
+
 Errors record the exception class, plus `$ai_http_status` and `$ai_retry_after_seconds` when available. They never record provider error bodies, which can contain secrets. A caller cancelling a turn records `$ai_cancelled` and is not counted as an error. Geo-IP lookup is disabled.
 
 ## A turn, end to end
@@ -264,6 +266,29 @@ A **Call quality** dashboard built on these events should show:
 | `POSTHOG_API_KEY`, `POSTHOG_API_URL` | Turn on browser analytics and backend LLM tracing. Blank turns both off. |
 | `DEPLOYMENT_ENVIRONMENT` | Tag events (`development` by default, `production` on deployed instances). |
 | `NEXT_PUBLIC_POSTHOG_FEEDBACK_SURVEY_ID`, `…_RATING_QUESTION_ID`, `…_COMMENT_QUESTION_ID` | The end-of-call survey: a 1–5 rating question and an open-text question. All three are required, or the rating form is hidden. |
+
+### Setting up the rating survey
+
+The app renders its own rating form, so the PostHog survey is **headless**: an `api` survey, which never shows a popover. Create it once per PostHog project:
+
+| Field | Value |
+|---|---|
+| Name | AI Rep call rating |
+| Type | API (headless) |
+| Question 1 | Rating, **scale 5**, display: number, required. "How was your call?" (labels Poor → Excellent) |
+| Question 2 | Open text, optional. "Tell us more" |
+
+Copy the survey id and the two question ids into `.env`:
+
+```bash
+NEXT_PUBLIC_POSTHOG_FEEDBACK_SURVEY_ID=<survey id>
+NEXT_PUBLIC_POSTHOG_FEEDBACK_RATING_QUESTION_ID=<rating question id>
+NEXT_PUBLIC_POSTHOG_FEEDBACK_COMMENT_QUESTION_ID=<open question id>
+```
+
+Responses then appear under the survey in PostHog and on each call's LLM trace (the Feedback tab), because `survey sent` carries `$ai_trace_id`. The question wording is already built into the app's form (`CallFeedbackForm.tsx`), so keep the two in sync if either changes.
+
+A survey with a single-choice (thumbs) question doesn't work here: the app sends a number from 1 to 5 as the rating answer.
 
 ## Replaced events
 

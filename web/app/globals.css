@@ -891,16 +891,118 @@ button:focus-visible {
   }
 }
 
-.feedback-card { width: min(100%, 580px); padding: 2rem; border: 1px solid #c7c7c7; border-radius: 24px; background: var(--navy-950); }
-.feedback-card h1 { font-size: 1.6rem; margin-bottom: 1.5rem; }
-.feedback-card fieldset { border: 0; padding: 0; margin: 0; }
-.feedback-ratings { display: flex; flex-wrap: wrap; gap: 1rem; margin: 1rem 0 1.5rem; }
-.feedback-ratings label { padding: .75rem; border: 1px solid #888; border-radius: 12px; cursor: pointer; }
-.feedback-ratings label:has(input:checked) { outline: 2px solid currentColor; }
-.feedback-ratings span { font-size: 1.5rem; line-height: 1; }
-.feedback-card textarea { display: block; width: 100%; min-height: 110px; margin-top: .5rem; padding: .75rem; border: 1px solid #888; border-radius: 8px; color: inherit; background: transparent; }
-.feedback-card p { margin: .75rem 0; }
-.feedback-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; }
-.feedback-actions button { cursor: pointer; }
-.feedback-actions button:disabled { opacity: .5; cursor: default; }
-.feedback-card :focus-visible { outline: 3px solid currentColor; outline-offset: 4px; }
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.feedback-card {
+  position: relative;
+  width: min(100%, 560px);
+  padding: clamp(28px, 5vw, 44px);
+  border: 1px solid var(--line);
+  border-radius: 28px;
+  background: rgba(5, 13, 25, 0.74);
+  box-shadow: 0 40px 120px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(18px);
+}
+
+.feedback-card h1 {
+  margin: 0;
+  font-size: clamp(1.75rem, 4vw, 2.25rem);
+  font-weight: 630;
+  letter-spacing: -0.03em;
+  outline: none;
+}
+
+.feedback-subtitle { margin: 8px 0 28px; color: var(--muted); }
+.feedback-card fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.feedback-card fieldset:disabled { opacity: 0.7; }
+
+.feedback-rating-row { display: flex; align-items: center; gap: 18px; margin-bottom: 30px; }
+.feedback-ratings { display: flex; gap: 4px; }
+
+.feedback-ratings label {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  color: var(--navy-700);
+  cursor: pointer;
+  transition: color 140ms ease, transform 140ms ease, filter 140ms ease;
+}
+
+.feedback-ratings label.filled {
+  color: var(--cobalt-bright);
+  filter: drop-shadow(0 0 10px rgba(110, 160, 255, 0.35));
+}
+
+.feedback-ratings label:hover { transform: scale(1.12); }
+.feedback-ratings label:has(input:focus-visible) { outline: 2px solid var(--cobalt); outline-offset: 2px; }
+.feedback-card fieldset:disabled .feedback-ratings label { cursor: default; transform: none; }
+
+.feedback-rating-word { min-width: 5.5em; color: var(--muted); font-weight: 560; }
+
+.feedback-label { display: block; margin-bottom: 10px; color: var(--muted); font-size: 0.95rem; }
+
+.feedback-card textarea {
+  display: block;
+  width: 100%;
+  min-height: 116px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  color: var(--text);
+  background: rgba(8, 19, 34, 0.7);
+  resize: vertical;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.feedback-card textarea::placeholder { color: var(--subtle); }
+
+.feedback-card textarea:focus {
+  outline: none;
+  border-color: rgba(93, 145, 255, 0.6);
+  box-shadow: 0 0 0 4px rgba(93, 145, 255, 0.15);
+}
+
+.feedback-counter { margin: 8px 0 0; color: var(--subtle); font-size: 0.8rem; text-align: right; }
+.feedback-error { min-height: 1.5em; margin: 12px 0; color: #ff9aa4; font-size: 0.9rem; }
+
+.feedback-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.feedback-actions .start-call { min-width: 160px; min-height: 52px; margin-right: 8px; }
+.feedback-actions .start-call:disabled { opacity: 0.4; cursor: default; transform: none; box-shadow: none; }
+
+.ghost-button {
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 999px;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+  font-weight: 560;
+  transition: color 140ms ease, background 140ms ease;
+}
+
+.ghost-button:hover { color: var(--text); background: rgba(197, 215, 244, 0.08); }
+.feedback-card :focus-visible { outline: 2px solid var(--cobalt); outline-offset: 3px; }
+
+/* The pre-call shell drops its padding on small screens; keep a gutter around this card. */
+@media (max-width: 760px) {
+  .feedback-card { width: calc(100% - 32px); margin: 16px; }
+}
+
+@media (max-width: 480px) {
+  .feedback-rating-row { flex-direction: column; align-items: flex-start; gap: 6px; }
+  .feedback-actions { flex-direction: column; align-items: stretch; }
+  .feedback-actions .start-call { margin-right: 0; }
+}

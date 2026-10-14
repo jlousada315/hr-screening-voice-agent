@@ -1,7 +1,7 @@
 """Booking-link scheduling and the other output-function replies."""
 
 import pytest
-from hireme_agent import runtime
+from hireme_agent import observability, runtime
 from hireme_agent.observability import TurnObservation
 from pydantic_ai.messages import ToolReturnPart
 from pydantic_ai.models.function import DeltaToolCall, FunctionModel
@@ -166,3 +166,29 @@ async def test_online_presence_replies_for_one_topic_in_a_single_request(
     for needle in absent:
         assert needle not in reply.lower()
     await turn.aclose()
+
+
+async def test_tool_call_generations_record_time_to_first_token(monkeypatch):
+    monkeypatch.setattr(runtime, "_BOOKING_LINK", None)
+    monkeypatch.setattr(runtime, "_agent", None)
+    captured = []
+    monkeypatch.setattr(
+        observability, "capture", lambda event, person, props, ts: captured.append((event, props))
+    )
+
+    async def stream(messages, info):
+        if any(isinstance(p, ToolReturnPart) for m in messages for p in m.parts):
+            yield "He worked at Example Corp."
+        else:
+            yield {0: DeltaToolCall(name="get_experience", json_args="{}")}
+
+    monkeypatch.setattr(runtime, "_create_model", lambda: FunctionModel(stream_function=stream))
+    turn = runtime.start_text(
+        "experience?", "test", TurnObservation("test", None, None, "voice", "v")
+    )
+    assert "".join([t async for t in turn])
+    await turn.aclose()
+    generations = [props for event, props in captured if event == "$ai_generation"]
+    assert len(generations) == 2  # the tool call, then the spoken answer
+    for props in generations:
+        assert 0 <= props["$ai_time_to_first_token"] <= props["$ai_latency"]

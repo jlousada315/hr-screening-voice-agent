@@ -59,3 +59,14 @@ export function PhoneOffIcon() {
     </svg>
   );
 }
+
+export function StarIcon() {
+  return (
+    <svg width="40" height="40" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M12 2.8l2.83 5.73 6.32.92-4.57 4.46 1.08 6.3L12 17.24l-5.66 2.97 1.08-6.3-4.57-4.46 6.32-.92L12 2.8Z"
+        fill="currentColor" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"
+      />
+    </svg>
+  );
+}

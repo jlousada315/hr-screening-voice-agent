@@ -327,6 +327,12 @@ async def _run_tokens(
                         async with node.stream(run.ctx) as stream:
                             try:
                                 async for event in stream:
+                                    # The first part of any kind (text or a tool call) is the
+                                    # model's first token, so tool-call turns get a TTFT too.
+                                    if isinstance(event, PartStartEvent):
+                                        properties.setdefault(
+                                            "$ai_time_to_first_token", perf_counter() - requested
+                                        )
                                     if isinstance(event, PartStartEvent) and isinstance(
                                         event.part, TextPart
                                     ):
